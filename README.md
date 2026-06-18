@@ -33,8 +33,9 @@ synthesize_waveguide_panel_hfss.m HFSS-focused synthesis entry
 ## Requirements
 
 - Windows with MATLAB.
-- Ansys Electronics Desktop/HFSS for HFSS model generation or execution.
-- CST Studio Suite for CST model generation or execution.
+- Ansys Electronics Desktop/HFSS for HFSS model generation or execution. The current scripts are adapted for HFSS 2018.
+- CST Studio Suite for CST model generation or execution. The current scripts are adapted for CST Studio Suite 2023.
+- Other HFSS/CST versions can usually be used after adjusting local executable paths and, if needed, small version-specific script/API command differences.
 - Update local executable paths in `build_demo_spec.m` before running solver execution:
   - `spec.hfss.executable`
   - `spec.cst.executable`
