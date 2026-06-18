@@ -1,0 +1,46 @@
+# Papers, figures, and exported plots
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.svg
+
+# Generated numerical results
+*.mat
+*.csv
+
+# Packaged snapshots and third-party archives
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# Generated solver projects, caches, and outputs
+output/
+output_*/
+*.aedt
+*.aedtresults/
+*.cst
+*.cst~
+*.lock
+*.asol
+
+# Local scratch files
+tmp_*.m
+*.asv
+*.m~
+*.log
+
+# Compiled binaries
+*.exe
+*.dll
+
+# OS/editor metadata
+.DS_Store
+Thumbs.db
+desktop.ini
