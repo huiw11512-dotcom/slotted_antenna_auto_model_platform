@@ -1,0 +1,150 @@
+name: Free FEM Antenna Benchmark (OpenParEM)
+
+on:
+  push:
+    branches:
+      - fem-cloud-prototype
+    paths:
+      - ".github/workflows/fem-antenna-benchmark.yml"
+      - "fem_cloud/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-antenna-fem:
+    name: Coax-fed patch antenna FEM regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out this project
+        uses: actions/checkout@v4
+
+      - name: Show free runner resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          lscpu | grep -E 'CPU\(s\)|Model name' | head -n 4
+          free -h
+          df -h /
+
+      - name: Download OpenParEM 2.2.1 precompiled Linux package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/openparem-bin"
+          curl -L --fail --retry 3 --retry-delay 3 \
+            -o "$RUNNER_TEMP/OpenParEM-2.2.1-bin.tar.gz" \
+            "https://github.com/OpenParEM/OpenParEM/releases/download/2.2.1/OpenParEM-2.2.1-bin.tar.gz"
+          tar -xzf "$RUNNER_TEMP/OpenParEM-2.2.1-bin.tar.gz" -C "$RUNNER_TEMP/openparem-bin"
+
+          OP_BIN="$(find "$RUNNER_TEMP/openparem-bin" -name OpenParEM3D -print -quit)"
+          if [ -z "$OP_BIN" ]; then
+            echo "::error::OpenParEM3D executable not found in the official binary package"
+            find "$RUNNER_TEMP/openparem-bin" -maxdepth 4 -type f | head -n 80
+            exit 1
+          fi
+          OP_ROOT="$(dirname "$(dirname "$OP_BIN")")"
+          test -x "$OP_BIN"
+          test -x "$OP_ROOT/scripts/process3D.sh"
+          test -x "$OP_ROOT/scripts/process3D"
+
+          echo "$OP_ROOT/bin" >> "$GITHUB_PATH"
+          echo "$OP_ROOT/scripts" >> "$GITHUB_PATH"
+          echo "OPAL_PREFIX=$OP_ROOT" >> "$GITHUB_ENV"
+          echo "PMIX_PREFIX=$OP_ROOT" >> "$GITHUB_ENV"
+          echo "FONTCONFIG_PATH=$OP_ROOT/etc/fonts" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$OP_ROOT/lib:$OP_ROOT/lib64:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo "OP_ROOT=$OP_ROOT" >> "$GITHUB_ENV"
+          echo "OP_BIN=$OP_BIN" >> "$GITHUB_ENV"
+          echo "OpenParEM binary: $OP_BIN"
+          "$OP_BIN" 2>&1 | head -n 20 || true
+
+      - name: Get official coax-fed patch antenna regression case
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/OpenParEM/OpenParEM.git "$RUNNER_TEMP/OpenParEM-src"
+          CASE_DIR="$RUNNER_TEMP/OpenParEM-src/regression/OpenParEM3D/antenna/patch"
+          test -s "$CASE_DIR/patch.proj"
+          test -s "$CASE_DIR/patch.msh"
+          test -s "$CASE_DIR/patch_ports.txt"
+          test -s "$CASE_DIR/patch_test_cases.csv"
+          echo "OPENPAREM_CASE_DIR=$CASE_DIR" >> "$GITHUB_ENV"
+
+      - name: Run 3D FEM and compare regression metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$OPENPAREM_CASE_DIR"
+          echo "Running OpenParEM3D patch antenna regression on $(nproc) logical CPUs"
+          process3D.sh patch.proj 4 2>&1 | tee "$RUNNER_TEMP/openparem-solver.log"
+          test -s patch_results.csv
+          test -s patch_FarField_results.csv
+          python "$GITHUB_WORKSPACE/fem_cloud/scripts/validate_openparem.py" \
+            --case-dir "$OPENPAREM_CASE_DIR" \
+            --output "$GITHUB_WORKSPACE/fem_cloud/results/validation.json"
+
+      - name: Collect solver outputs and exact input files
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p fem_cloud/results
+          if [ -n "${OPENPAREM_CASE_DIR:-}" ] && [ -d "$OPENPAREM_CASE_DIR" ]; then
+            for file in \
+              patch_results.csv \
+              patch_FarField_results.csv \
+              patch_results.log \
+              patch_test_results.csv \
+              patch.proj \
+              patch.opd \
+              patch.msh \
+              patch_ports.txt \
+              patch_test_cases.csv \
+              local_materials.txt; do
+              if [ -f "$OPENPAREM_CASE_DIR/$file" ]; then
+                cp "$OPENPAREM_CASE_DIR/$file" fem_cloud/results/
+              fi
+            done
+          fi
+          if [ -f "$RUNNER_TEMP/openparem-solver.log" ]; then
+            cp "$RUNNER_TEMP/openparem-solver.log" fem_cloud/results/solver.log
+          fi
+          {
+            echo "Solver: OpenParEM 2.2.1"
+            echo "Runner: ubuntu-24.04 (GitHub-hosted standard runner)"
+            echo "Git ref: $GITHUB_REF"
+            echo "Commit: $GITHUB_SHA"
+            echo "UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > fem_cloud/results/run_metadata.txt
+
+      - name: Upload FEM results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openparem-patch-antenna-fem-results
+          path: fem_cloud/results/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit result bundle to this branch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d fem_cloud/results ] && [ -n "$(find fem_cloud/results -type f -print -quit)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add fem_cloud/results
+            if ! git diff --cached --quiet; then
+              git commit -m "Add OpenParEM patch antenna FEM benchmark results"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            else
+              echo "No result changes to commit."
+            fi
+          else
+            echo "No result files were produced."
+          fi
