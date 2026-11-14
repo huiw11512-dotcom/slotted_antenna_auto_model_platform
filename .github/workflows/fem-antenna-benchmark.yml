@@ -49,7 +49,10 @@ jobs:
           OP_ROOT="$(dirname "$(dirname "$OP_BIN")")"
           test -x "$OP_BIN"
           test -x "$OP_ROOT/scripts/process3D.sh"
-          test -x "$OP_ROOT/scripts/process3D"
+          export PATH="$OP_ROOT/bin:$OP_ROOT/scripts:$PATH"
+          command -v OpenParEM3D
+          command -v process3D
+          command -v process3D.sh
 
           echo "$OP_ROOT/bin" >> "$GITHUB_PATH"
           echo "$OP_ROOT/scripts" >> "$GITHUB_PATH"
