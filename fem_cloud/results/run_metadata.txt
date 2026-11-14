@@ -1,0 +1,5 @@
+Solver: OpenParEM 2.2.1
+Runner: ubuntu-24.04 (GitHub-hosted standard runner)
+Git ref: refs/heads/fem-cloud-prototype
+Commit: 2ed2bf4271796ea2b90110143e6d09d7c312d365
+UTC: 2026-11-14T17:36:18Z
